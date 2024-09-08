@@ -1,0 +1,3 @@
+﻿# Additionally exclude "runtimes" and ".old" directories
+runtimes/
+.old/
