@@ -6,41 +6,60 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <Deterministic>true</Deterministic>
+    <DeterministicSourcePaths>true</DeterministicSourcePaths>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     
     <!-- Package informations -->
 
     <PackageId>MiniFB</PackageId>
-    <Version>0.7.0</Version>
+    <VersionPrefix>0.7.0</VersionPrefix>
+    <VersionSuffix>alpha1</VersionSuffix>
     <Authors>Felix Rüdiger</Authors>
 
     <Title>MiniFB</Title>
-    <Description>...</Description>
+    <Description>MiniFB is a library for visualizing self-drawn frame buffers for .Net applications</Description>
     
     <Copyright>2024, Felix Rüdiger</Copyright>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
 
-    <PackageProjectUrl>TODO: Fill me out later</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/fruediger/MiniFB</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
+    <PackageIconUrl>https://raw.githubusercontent.com/fruediger/MiniFB/main/assets/icon.png</PackageIconUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>minifb;framebuffer;frame;visualization;visual;render;wrapper;binding</PackageTags>
+    <PackageTags>minifb;framebuffer;frame;visualization;visual;render;pixel;draw;wrapper;binding</PackageTags>
 
-    <RepositoryUrl>TODO: Fill me out later</RepositoryUrl>
+    <RepositoryUrl>https://github.com/fruediger/MiniFB.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
   </PropertyGroup>
 
+  <PropertyGroup >
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\MiniFB.SourceGeneration\MiniFB.SourceGeneration.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    <SourceRoot Include="$(MSBuildThisFileDirectory)/" />
   </ItemGroup>
-  
+
   <ItemGroup>
-    <None Include="runtimes\" Visible="false" />
     <None Include=".gitignore" CopyToOutputDirectory="Never" Pack="false" />
 
     <None Include="..\LICENSE.md" Visible="false" Pack="true" PackagePath="" />
     <None Include="..\README.md" Visible="false" Pack="true" PackagePath="" />
     <None Include="..\assets\icon.png" Visible="false" Pack="true" PackagePath="" />
-    
+
     <None Include="runtimes\**\*" Visible="false" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="runtimes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniFB.SourceGeneration\MiniFB.SourceGeneration.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
