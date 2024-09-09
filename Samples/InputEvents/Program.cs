@@ -45,7 +45,7 @@ window.Closing += static window =>
 	Console.WriteLine($"{window.UserData as string} > close");
 
 	return true; // true => confirm close
-	             // false => don't close
+				 // false => don't close
 };
 
 window.KeyChange += static (window, key, modifier, state) =>

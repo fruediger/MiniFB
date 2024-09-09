@@ -9,19 +9,19 @@ TODO: ...
 
     There's a plan to further expand the supported platforms in the future.
 
--   for additional usage dependencies per platform see [`USAGE.md`](USAGE.md)
+-   for additional usage dependencies per platform see [`USAGE.md`](https://github.com/fruediger/MiniFB/blob/main/USAGE.md)
 
--   for building requirements see [`BUILD.md`](BUILD.md)
+-   for building requirements see [`BUILD.md`](https://github.com/fruediger/MiniFB/blob/main/BUILD.md)
 
 ## Usage
 
-See the [quick start guide](#quickstart).
+See the [quickstart guide](#quickstart).
 
-Alternatively, you can see [`USAGE.md`](USAGE.md) for a more in depth look on how to use MiniFB, or have a look at the [sample applications](Samples).
+Alternatively, you can see [`USAGE.md`](https://github.com/fruediger/MiniFB/blob/main/USAGE.md) for a more in depth look on how to use MiniFB, or have a look at the [sample applications](Samples).
 
 ## Building
 
-See [`BUILD.md`](BUILD.md).
+See [`BUILD.md`](https://github.com/fruediger/MiniFB/blob/main/BUILD.md).
 
 ## Quickstart
 

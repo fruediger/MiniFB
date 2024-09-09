@@ -18,4 +18,7 @@ The platform, you want your consuming project to be executed on, must meet one o
   - GLX for OpenGL (`libGL`)
   - a C runtime (`libc`)
 
-##
+## More coming soon...
+
+Some in depth usage guide, explanations, and examples are coming here soon.
+Until then have a look at the [quickstart guide](README.md#quickstart).

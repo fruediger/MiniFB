@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
-using System.Threading;
 using static MiniFB.Internal.NativeImportConditionExpressions;
 
 namespace MiniFB;
@@ -236,7 +235,7 @@ public partial class Window : NativeObject
 
 		Unsafe.Add(
 			ref MemoryMarshal.GetArrayDataReference(pooledTitleBuffer),
-			Math.Min(			
+			Math.Min(
 				Encoding.UTF8.GetBytes(title, pooledTitleBuffer),
 				pooledTitleBuffer.Length - 1
 			)
@@ -294,7 +293,7 @@ public partial class Window : NativeObject
 		LifetimeState = WindowLifetimeState.Initializing;
 		mSelfHandle = GCHandle.Alloc(this, GCHandleType.Weak);
 
-		mfb_set_user_data(handle, GCHandle.ToIntPtr(mSelfHandle));		
+		mfb_set_user_data(handle, GCHandle.ToIntPtr(mSelfHandle));
 
 		unsafe
 		{
@@ -492,14 +491,29 @@ public partial class Window : NativeObject
 	/// Currently only supported on Windows and Linux platforms.
 	/// Calling this property from a different platform might result in unexpected behavior.
 	/// </remarks>
+	/// <exception cref="InvalidOperationException">
+	/// <list type="bullet">
+	///		<item><description>
+	///			an attempt to access the <see cref="Title">Title</see> property of a non-ready <see cref="Window"/>
+	///			(its <see cref="LifetimeState">LifetimeState</see> is neither <c><see cref="WindowLifetimeState.Ready">Ready</see></c> nor <c><see cref="WindowLifetimeState.Undefined">Undefined</see></c>, or it's closed)
+	///		</description></item>
+	///		<item><description>something else went wrong</description></item>
+	/// </list>
+	/// </exception>
 	[SupportedOSPlatform("windows")]
 	[SupportedOSPlatform("linux")]
 	public string Title
-	{		
+	{
 		get
 		{
 			unsafe
 			{
+				if (LifetimeState is not (WindowLifetimeState.Ready or WindowLifetimeState.Undefined) || AsData.States.Close)
+				{
+					// still throwing, but that's better than throwing from an attempt to access non-owned memory
+					failWindowNotReady();
+				}
+
 				Unsafe.SkipInit(out (IntPtr pinnedTitlePtr, int length) data);
 
 				var titleBuffer = (byte*)mfb_get_title(Handle, &getTitleBufferCallback, &data);
@@ -510,7 +524,7 @@ public partial class Window : NativeObject
 
 					failCouldNotGetTitle();
 				}
-				
+
 				titleBuffer[data.length - 1] = 0;
 
 				var result = Encoding.UTF8.GetString(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(titleBuffer));
@@ -535,17 +549,32 @@ public partial class Window : NativeObject
 				}
 
 				[DoesNotReturn]
-				static void failCouldNotGetTitle() => throw new InvalidOperationException("Something went wrong while trying to get the Window's title.");
+				static void failWindowNotReady()
+					=> throw new InvalidOperationException($"Cannot get the title of a non-ready Window (its LifetimeState is neither \"{WindowLifetimeState.Ready}\" nor \"{WindowLifetimeState.Undefined}\", or it's closed).");
+
+				[DoesNotReturn]
+				static void failCouldNotGetTitle()
+					=> throw new InvalidOperationException("Something went wrong while trying to get the Window's title.");
 			}
 		}
 		set
 		{
+			if (LifetimeState is not (WindowLifetimeState.Ready or WindowLifetimeState.Undefined) || AsData.States.Close)
+			{
+				// still throwing, but that's better than throwing from an attempt to access non-owned memory
+				failWindowNotReady();
+			}
+
 			mfb_set_title(
 				Handle,
 				ValidateConvertAndPinTitle(value, out var pinnedTitleHandle)
 			);
 
 			ReleasePinnedTitle(pinnedTitleHandle);
+
+			[DoesNotReturn]
+			static void failWindowNotReady()
+				=> throw new InvalidOperationException($"Cannot set the title of a non-ready Window (its LifetimeState needs to be \"{WindowLifetimeState.Ready}\" or \"{WindowLifetimeState.Undefined}\", and it's not closed).");
 		}
 	}
 

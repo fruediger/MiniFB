@@ -11,9 +11,9 @@ using var window = new Window("Noise Test", width, height, WindowFlags.Resizable
 var buffer = new Argb[size];
 
 void resize(Window window, int newWidth, int newHeight)
-{	
+{
 	width = (uint)newWidth;
-	height = (uint)newHeight;		
+	height = (uint)newHeight;
 
 	// It's not safe to resize the buffer while it's pinned. That would be case if, for example, 'window.LifetimeState is WindowLifetimeState.UpdatingWithFixedBuffer'.
 	// Instead we signalize the need to resize the buffer by setting 'size' and do the resize at the begin of the next frame.
@@ -25,7 +25,7 @@ void resize(Window window, int newWidth, int newHeight)
 
 window.Resize += resize;
 
-window.TrySetViewport(50, 50, width - 50 - 50, height - 50 -50);
+window.TrySetViewport(50, 50, width - 50 - 50, height - 50 - 50);
 resize(window, (int)width - 100, (int)height - 100); // to resize buffer
 
 do

@@ -36,14 +36,14 @@ prettySquare(bufferHigh, dimenHigh);
 using var windowLow = new Window("LowRes", dimenLow, dimenLow);
 using var windowHigh = new Window("HighRes", dimenHigh / 2, dimenHigh / 2);
 
-for (;;)
+for (; ; )
 {
 	if (windowLow) // is 'windowLow' truthy?
 	{
 		if (windowLow.Update(bufferLow, dimenLow, dimenLow) is not UpdateState.Ok)
 		{
 			windowLow.Dispose(); // make 'windowLow' falsy
-			                     // also, multiple disposes are allowed on MiniFB.NativeObject
+								 // also, multiple disposes are allowed on MiniFB.NativeObject
 		}
 	}
 
@@ -52,7 +52,7 @@ for (;;)
 		if (windowHigh.Update(bufferHigh, dimenHigh, dimenHigh) is not UpdateState.Ok)
 		{
 			windowHigh.Dispose(); // make 'windowHigh' falsy
-			                      // also, multiple disposes are allowed on MiniFB.NativeObject
+								  // also, multiple disposes are allowed on MiniFB.NativeObject
 		}
 	}
 

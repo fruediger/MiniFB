@@ -66,19 +66,19 @@ const float inc = 90f / 64f;
 for (var c = 0; c < 64; ++c)
 {
 	var col = (int)(255f * MathF.Sin(c * inc * MathF.PI / 180f) + .5f);
-	pallete[64 * 0 + c] = new(255, (byte)col,         0,                 0                );
-	pallete[64 * 1 + c] = new(255, 255,               (byte)col,         0                );
-	pallete[64 * 2 + c] = new(255, (byte)(255 - col), 255,               0                );
-	pallete[64 * 3 + c] = new(255, 0,                 255,               (byte)col        );
-	pallete[64 * 4 + c] = new(255, 0,                 (byte)(255 - col), 255              );
-	pallete[64 * 5 + c] = new(255, (byte)col,         0,                 255              );
-	pallete[64 * 6 + c] = new(255, 255,               0,                 (byte)(255 - col));
-	pallete[64 * 7 + c] = new(255, (byte)(255 - col), 0,                 0                );
+	pallete[64 * 0 + c] = new(255, (byte)col, 0, 0);
+	pallete[64 * 1 + c] = new(255, 255, (byte)col, 0);
+	pallete[64 * 2 + c] = new(255, (byte)(255 - col), 255, 0);
+	pallete[64 * 3 + c] = new(255, 0, 255, (byte)col);
+	pallete[64 * 4 + c] = new(255, 0, (byte)(255 - col), 255);
+	pallete[64 * 5 + c] = new(255, (byte)col, 0, 255);
+	pallete[64 * 6 + c] = new(255, 255, 0, (byte)(255 - col));
+	pallete[64 * 7 + c] = new(255, (byte)(255 - col), 0, 0);
 }
 
 TargetFPS = 10;
 
-for(var time = 0f;;)
+for (var time = 0f; ;)
 {
 	if (windowA) // is 'windowA' truthy?
 	{
@@ -98,7 +98,7 @@ for(var time = 0f;;)
 		if (windowA.Update(bufferA) is not UpdateState.Ok)
 		{
 			windowA.Dispose(); // make 'windowA' falsy
-			                   // also, multiple disposes are allowed on MiniFB.NativeObject
+							   // also, multiple disposes are allowed on MiniFB.NativeObject
 		}
 	}
 
@@ -123,9 +123,9 @@ for(var time = 0f;;)
 		if (windowB.Update(bufferB) is not UpdateState.Ok)
 		{
 			windowB.Dispose(); // make 'windowB' falsy
-			                   // also, multiple disposes are allowed on MiniFB.NativeObject
+							   // also, multiple disposes are allowed on MiniFB.NativeObject
 		}
-	}	
+	}
 
 	// Don't need to wait for sync for both windows in the same thread
 	if (windowA) // is 'windowA' still truthy?
