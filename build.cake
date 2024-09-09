@@ -238,7 +238,7 @@ foreach (var sample in samples)
 
 		var buildSample = Task($"Build-Sample-{sample}")
 			.Description($"Builds the \"{sample}\" sample application")
-			.IsDependentOn(build)
+			//.IsDependentOn(build)
 			.Does(() =>
 			{
 				DoInDirectory($"Samples/{sample}", () =>
