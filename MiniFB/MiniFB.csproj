@@ -29,7 +29,6 @@
 
     <PackageProjectUrl>https://github.com/fruediger/MiniFB</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
-    <PackageIconUrl>https://raw.githubusercontent.com/fruediger/MiniFB/main/assets/icon.png</PackageIconUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>minifb;framebuffer;frame;visualization;visual;render;pixel;draw;wrapper;binding</PackageTags>
 
