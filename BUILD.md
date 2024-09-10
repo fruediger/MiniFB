@@ -7,11 +7,7 @@
 -	`dotnet` CLI tool (this should come with the .NET-SDK)
 -	[Cake 4.0](https://cakebuild.net/)
 
-	Make sure you have Cake install as a `dotnet` tool. This is easily done by running
-	
-	```console
-	$ dotnet tool install Cake.Tool --version 4.0.0
-	```
+	Make sure you have Cake installed as a `dotnet` tool. If not, have a look at the ["Setup" section in the offical Cake documentation](https://cakebuild.net/docs/running-builds/runners/dotnet-tool#setup).
 
 ## Building and packing the MiniFB library
 
@@ -20,8 +16,9 @@
 From a commandline, run:
 
 ```console
-$ git clone TODO: fill me out
+$ git clone git@github.com:fruediger/MiniFB.git
 ```
+<small>*The HTTPS repository url is https://github.com/fruediger/MiniFB.git*</small>
 
 <details>
 <summary><em>(Optional)</em> Clone the official native libraries repository</summary>
@@ -31,6 +28,7 @@ If you want to bundle your own version of the native libraries, you might want t
 ```console
 $ git clone git@github.com:fruediger/minifb-native.git
 ```
+<small>*The HTTPS repository url is https://github.com/fruediger/minifb-native.git*</small>
 </details>
 
 After that change into the newly cloned directory; **all of the following steps are assumed to be executed from there**:
