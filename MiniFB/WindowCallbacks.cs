@@ -1,7 +1,7 @@
 ﻿global using unsafe WindowActiveCallback = delegate* unmanaged[Cdecl]<nint, byte, void>;
 global using unsafe WindowCharInputCallback = delegate* unmanaged[Cdecl]<nint, uint, void>;
 global using unsafe WindowCloseCallback = delegate* unmanaged[Cdecl]<nint, byte>;
-global using unsafe WindowGetTitleBufferCallback = delegate* unmanaged[Cdecl]<int*, void*, nint>;
+global using unsafe WindowGetTitleBufferCallback = delegate* unmanaged[Cdecl]<int*, void*, byte*>;
 global using unsafe WindowKeyboardCallback = delegate* unmanaged[Cdecl]<nint, MiniFB.Key, MiniFB.KeyModifier, MiniFB.PressedState, void>;
 global using unsafe WindowMouseButtonCallback = delegate* unmanaged[Cdecl]<nint, MiniFB.MouseButton, MiniFB.KeyModifier, MiniFB.PressedState, void>;
 global using unsafe WindowMouseMoveCallback = delegate* unmanaged[Cdecl]<nint, int, int, void>;

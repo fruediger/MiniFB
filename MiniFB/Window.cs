@@ -2,12 +2,12 @@
 using MiniFB.Internal;
 using MiniFB.SourceGeneration;
 using System;
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Threading;
 using static MiniFB.Internal.NativeImportConditionExpressions;
 
 namespace MiniFB;
@@ -207,6 +207,113 @@ public partial class Window : NativeObject
 			target.OnMouseScroll(modifier, deltaX, deltaY);
 		}
 	}
+		
+	private static volatile uint mNativeBufferUsers = 0;
+	private static unsafe byte* mNativeBufferPtr = null;
+	private static nuint mNativeBufferSize = 0;
+	private static SpinLock mNativeBufferLock;
+
+	private static unsafe byte* AcquireLockedNativeBuffer(nuint minimumSize, out nuint actualSize, out bool lockTaken)
+	{
+		const int lockTimeoutMs = 10;
+		const int lowerSizeThreshold = 4,  // 2^4 = 16
+			      upperSizeThreshold = 22; // 2^22 = 4194304 = 4096 * 1024 (most common default page size on Windows)
+
+		lockTaken = false;
+
+		mNativeBufferLock.TryEnter(lockTimeoutMs, ref lockTaken);
+		if (lockTaken)
+		{
+			if (minimumSize <= mNativeBufferSize)
+			{
+				actualSize = mNativeBufferSize;
+				return mNativeBufferPtr;
+			}
+
+			actualSize = requiredSize(minimumSize);
+			return mNativeBufferPtr = (byte*)NativeMemory.Realloc(mNativeBufferPtr, mNativeBufferSize = actualSize);
+		}
+		else
+		{
+			// in the rare case where we would have a race condition,
+			// we simply allocate a new intermediate buffer which gets deallocated straight away later on
+			// NOTE: here, lockTaken is false
+
+			actualSize = requiredSize(minimumSize);
+			return (byte*)NativeMemory.Alloc(actualSize);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		static nuint requiredSize(nuint minimumSize)
+			=> minimumSize switch
+			{
+				<= (1 << lowerSizeThreshold) => 1 << lowerSizeThreshold, // 2^lowerSizeThreshold as a lower limit
+				<= (1 << upperSizeThreshold) => unchecked((nuint)1 << (int)(nuint.Log2(minimumSize - 1) + 1)), // the next biggest power of two in which the requested size fits
+				_                            => unchecked((nuint)(-(-(nint)minimumSize >> upperSizeThreshold) << upperSizeThreshold)) // the next biggest multiple of 2^upperSizeThreshold in which the requested size fits
+			};
+	}
+
+	private static unsafe void ReleaseLockedNativeBuffer(byte* nativeBufferPtr, bool lockTaken)
+	{
+		if (lockTaken)
+		{
+			mNativeBufferLock.Exit();
+		}
+		else
+		{
+			// simply destroy the intermediate buffer
+			NativeMemory.Free(nativeBufferPtr);
+		}
+	}
+
+	private static IntPtr ValidateConvertTitle(string title, out bool lockTaken)
+	{
+		if (title is null)
+		{
+			failTitleArgumentNull();
+		}
+
+		var size = Encoding.UTF8.GetByteCount(title) + 1;
+
+		unsafe
+		{
+			var titleNativeBuffer = AcquireLockedNativeBuffer((nuint)size, out var actualSize, out lockTaken);
+
+			titleNativeBuffer[
+				Math.Min( 
+					(nuint)Encoding.UTF8.GetBytes(
+						title,
+						MemoryMarshal.CreateSpan(
+							ref Unsafe.AsRef<byte>(titleNativeBuffer),
+							actualSize < int.MaxValue ? (int)actualSize : int.MaxValue
+						)
+					),
+					actualSize - 1
+				)] = 0;
+
+			return (IntPtr)titleNativeBuffer;
+		}
+		
+		[DoesNotReturn]
+		static void failTitleArgumentNull() => throw new ArgumentNullException(nameof(title));
+	}
+
+	// This method only exists, so we can increment the native buffer user count as early as possible, even in a ctor call chain.
+	// This method should not be used outside of a constructor call chain
+	private static IntPtr IncrementUserCounterAndValidateConvertTitle(string title, out bool lockTaken)
+	{
+		Interlocked.Increment(ref mNativeBufferUsers);
+
+		return ValidateConvertTitle(title, out lockTaken);
+	}
+
+	private static void ReleaseTitleBuffer(IntPtr titleNativeBuffer, bool lockTaken)
+	{
+		unsafe
+		{
+			ReleaseLockedNativeBuffer((byte*)titleNativeBuffer, lockTaken);
+		}
+	}	
 
 	private static IntPtr ValidateInstantiation(IntPtr handle)
 	{
@@ -219,47 +326,6 @@ public partial class Window : NativeObject
 
 		[DoesNotReturn]
 		static void failCouldNotInstantiateNativeWindowObject() => throw new NativeOperationException($"Could not instanciate a native {nameof(Window)} object");
-	}
-
-	private static IntPtr ValidateConvertAndPinTitle([NotNull] string title, out GCHandle pinnedTitleHandle)
-	{
-		if (title is null)
-		{
-			failTitleArgumentNull();
-		}
-
-		var pooledTitleBuffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetByteCount(title) + 1);
-		Array.Clear(pooledTitleBuffer);
-
-		pinnedTitleHandle = GCHandle.Alloc(pooledTitleBuffer, GCHandleType.Pinned);
-
-		Unsafe.Add(
-			ref MemoryMarshal.GetArrayDataReference(pooledTitleBuffer),
-			Math.Min(
-				Encoding.UTF8.GetBytes(title, pooledTitleBuffer),
-				pooledTitleBuffer.Length - 1
-			)
-		) = 0;
-
-		return pinnedTitleHandle.AddrOfPinnedObject();
-
-		[DoesNotReturn]
-		static void failTitleArgumentNull() => throw new ArgumentNullException(nameof(title));
-	}
-
-	private static void ReleasePinnedTitle(GCHandle pinnedTitleHandle)
-	{
-		if (pinnedTitleHandle.IsAllocated)
-		{
-			var pooledTitleBuffer = pinnedTitleHandle.Target as byte[];
-
-			pinnedTitleHandle.Free();
-
-			if (pooledTitleBuffer is not null)
-			{
-				ArrayPool<byte>.Shared.Return(pooledTitleBuffer);
-			}
-		}
 	}
 
 	private WindowLifetimeState mLifetimeState = default;
@@ -288,9 +354,12 @@ public partial class Window : NativeObject
 	/// </remarks>
 	protected Window(IntPtr handle) : base(handle) { }
 
-	private Window(IntPtr handle, GCHandle pinnedTitleHandle) : this(handle)
-	{
+	private Window(IntPtr handle, IntPtr titleNativeBuffer, bool lockTaken) : this(handle)
+	{	
 		LifetimeState = WindowLifetimeState.Initializing;
+
+		ReleaseTitleBuffer(titleNativeBuffer, lockTaken);
+
 		mSelfHandle = GCHandle.Alloc(this, GCHandleType.Weak);
 
 		mfb_set_user_data(handle, GCHandle.ToIntPtr(mSelfHandle));
@@ -306,8 +375,6 @@ public partial class Window : NativeObject
 			mfb_set_mouse_move_callback(handle, &MouseMoveCallback);
 			mfb_set_mouse_scroll_callback(handle, &MouseScrollCallback);
 		}
-
-		ReleasePinnedTitle(pinnedTitleHandle);
 
 		LifetimeState = WindowLifetimeState.Ready;
 	}
@@ -325,8 +392,8 @@ public partial class Window : NativeObject
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	public Window(string title, uint width, uint height) : this(
-		ValidateInstantiation(mfb_open(ValidateConvertAndPinTitle(title, out var pinnedTitleHandle), width, height)),
-		pinnedTitleHandle
+		ValidateInstantiation(mfb_open((IncrementUserCounterAndValidateConvertTitle(title, out var lockTaken) is var titleNativeBuffer) switch { _ => titleNativeBuffer }, width, height)),
+		titleNativeBuffer, lockTaken
 	)
 	{ }
 
@@ -345,8 +412,8 @@ public partial class Window : NativeObject
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	public Window(string title, uint width, uint height, WindowFlags flags) : this(
-		ValidateInstantiation(mfb_open_ex(ValidateConvertAndPinTitle(title, out var pinnedTitleHandle), width, height, flags)),
-		pinnedTitleHandle
+		ValidateInstantiation(mfb_open_ex((IncrementUserCounterAndValidateConvertTitle(title, out var lockTaken) is var titleNativeBuffer) switch { _ => titleNativeBuffer }, width, height, flags)),
+		titleNativeBuffer, lockTaken
 	)
 	{ }
 
@@ -380,6 +447,37 @@ public partial class Window : NativeObject
 			}
 
 			UserData = null;
+
+			if (Interlocked.Decrement(ref mNativeBufferUsers) is <= 0)
+			{
+				// We are in charge to release the native buffer.
+				// To do so, we must synchronize using mNativeBufferLock and spin wait indefinitely. <-- This can't possibly lead to a deadlock, right?
+
+				var lockTaken = false;
+				try
+				{
+					mNativeBufferLock.Enter(ref lockTaken);
+
+					// do we still need to release the native buffer?
+					if (mNativeBufferUsers is <= 0)
+					{
+						unsafe
+						{
+							NativeMemory.Free(mNativeBufferPtr);
+
+							mNativeBufferPtr = null;
+							mNativeBufferSize = 0;
+						}
+					}
+				}
+				finally
+				{
+					if (lockTaken)
+					{
+						mNativeBufferLock.Exit();
+					}
+				}
+			}
 		}
 
 		base.Dispose(disposing);
@@ -514,38 +612,37 @@ public partial class Window : NativeObject
 					failWindowNotReady();
 				}
 
-				Unsafe.SkipInit(out (IntPtr pinnedTitlePtr, int length) data);
+				var data = (titleBuffer: IntPtr.Zero, requestedSize: (nuint)0, lockTaken: false);
 
 				var titleBuffer = (byte*)mfb_get_title(Handle, &getTitleBufferCallback, &data);
 
 				if (titleBuffer is null)
 				{
-					ReleasePinnedTitle(GCHandle.FromIntPtr(data.pinnedTitlePtr));
+					ReleaseLockedNativeBuffer((byte*)data.titleBuffer, data.lockTaken);
 
 					failCouldNotGetTitle();
 				}
 
-				titleBuffer[data.length - 1] = 0;
+				titleBuffer[data.requestedSize] = 0;
 
 				var result = Encoding.UTF8.GetString(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(titleBuffer));
 
-				ReleasePinnedTitle(GCHandle.FromIntPtr(data.pinnedTitlePtr));
+				ReleaseLockedNativeBuffer((byte*)data.titleBuffer, data.lockTaken);
 
 				return result;
 
 				/* *** */
 
 				[UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-				static nint getTitleBufferCallback(int* length, void* data)
+				static byte* getTitleBufferCallback(int* length, void* data)
 				{
-					var pooledTitleBuffer = ArrayPool<byte>.Shared.Rent(*length);
-					Array.Clear(pooledTitleBuffer);
+					var requestedSize = (nuint)(*length);
+					var titleBuffer = AcquireLockedNativeBuffer(requestedSize, out var actualSize, out var lockTaken);
 
-					var pinnedTitleHandle = GCHandle.Alloc(pooledTitleBuffer, GCHandleType.Pinned);
+					*length = actualSize < int.MaxValue ? (int)actualSize : int.MaxValue;
+					*((IntPtr titleBuffer, nuint requestedSize, bool lockTaken)*)data = ((IntPtr)titleBuffer, requestedSize, lockTaken);
 
-					*((IntPtr pinnedTitlePtr, int length)*)data = (GCHandle.ToIntPtr(pinnedTitleHandle), *length = pooledTitleBuffer.Length);
-
-					return pinnedTitleHandle.AddrOfPinnedObject();
+					return titleBuffer;
 				}
 
 				[DoesNotReturn]
@@ -567,10 +664,10 @@ public partial class Window : NativeObject
 
 			mfb_set_title(
 				Handle,
-				ValidateConvertAndPinTitle(value, out var pinnedTitleHandle)
+				(ValidateConvertTitle(value, out var lockTaken) is var titleNativeBuffer) switch { _ => titleNativeBuffer }
 			);
 
-			ReleasePinnedTitle(pinnedTitleHandle);
+			ReleaseTitleBuffer(titleNativeBuffer, lockTaken);
 
 			[DoesNotReturn]
 			static void failWindowNotReady()
