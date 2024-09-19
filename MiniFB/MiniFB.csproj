@@ -18,7 +18,7 @@
 
     <PackageId>MiniFB</PackageId>
     <VersionPrefix>0.7.0</VersionPrefix>
-    <VersionSuffix>alpha1</VersionSuffix>
+    <VersionSuffix>alpha2</VersionSuffix>
     <Authors>Felix Rüdiger</Authors>
 
     <Title>MiniFB</Title>
