@@ -13,7 +13,7 @@ uint width = 800, height = 600, size = width * height;
 uint noise, carry, seed = 0xbeef;
 uint iteration = 0;
 
-using var window = OperatingSystem.IsWindows()
+using var window = OperatingSystem.IsWindows() || OperatingSystem.IsLinux()
     ? new Window(titlePrefix, width, height, WindowFlags.Resizable, smallIcon: new(icon16(), 16, 16), bigIcon: new(icon32(), 32, 32))
     : new Window(titlePrefix, width, height, WindowFlags.Resizable);
 

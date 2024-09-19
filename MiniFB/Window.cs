@@ -25,10 +25,14 @@ public partial class Window : NativeObject
 	private static partial IntPtr mfb_open_ex(IntPtr title, uint width, uint height, WindowFlags flags);
 	
 #pragma warning disable CS8500 // See the comment on a similar suppression in one of the 'CreateWindow' methods to find out why this is okay
-	[NativeImportFunction<MiniFB.Library, IsWindows>(CallConvs = [typeof(CallConvCdecl)])]
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
+	[NativeImportFunction<MiniFB.Library, OrElse<IsWindows, IsLinux>>(CallConvs = [typeof(CallConvCdecl)])]
 	private static unsafe partial IntPtr mfb_open_with_icons(IntPtr title, uint width, uint height, IconInfo* icon_small, IconInfo* icon_big);
 
-	[NativeImportFunction<MiniFB.Library, IsWindows>(CallConvs = [typeof(CallConvCdecl)])]
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
+	[NativeImportFunction<MiniFB.Library, OrElse<IsWindows, IsLinux>>(CallConvs = [typeof(CallConvCdecl)])]
 	private static unsafe partial IntPtr mfb_open_ex_with_icons(IntPtr title, uint width, uint height, WindowFlags flags, IconInfo* icon_small, IconInfo* icon_big);
 #pragma warning restore CS8500
 
@@ -56,9 +60,13 @@ public partial class Window : NativeObject
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial bool mfb_set_viewport_best_fit(IntPtr window, uint old_width, uint old_height);
 
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	[NativeImportFunction<MiniFB.Library, OrElse<IsWindows, IsLinux>>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial void mfb_set_title(IntPtr window, IntPtr title);
 
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	[NativeImportFunction<MiniFB.Library, OrElse<IsWindows, IsLinux>>(CallConvs = [typeof(CallConvCdecl)])]
 	private static unsafe partial IntPtr mfb_get_title(IntPtr window, WindowGetTitleBufferCallback callback, void* data);
 
@@ -390,6 +398,8 @@ public partial class Window : NativeObject
 		}
 	}
 
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	private static IntPtr CreateWindow(string title, uint width, uint height, in IconInfo smallIcon, in IconInfo bigIcon)
 	{
 		Interlocked.Increment(ref mNativeBufferUsers);
@@ -423,6 +433,8 @@ public partial class Window : NativeObject
 		}
 	}
 
+	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	private static IntPtr CreateWindow(string title, uint width, uint height, WindowFlags flags, in IconInfo smallIcon, in IconInfo bigIcon)
 	{
 		Interlocked.Increment(ref mNativeBufferUsers);
@@ -567,6 +579,7 @@ public partial class Window : NativeObject
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	public Window(string title, uint width, uint height, in IconInfo smallIcon = default, in IconInfo bigIcon = default) : this(
 		CreateWindow(title, width, height, in smallIcon, in bigIcon),
 		privateConstructorDispatcher: default
@@ -593,6 +606,7 @@ public partial class Window : NativeObject
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	[SupportedOSPlatform("windows")]
+	[SupportedOSPlatform("linux")]
 	public Window(string title, uint width, uint height, WindowFlags flags, in IconInfo smallIcon = default, in IconInfo bigIcon = default) : this(
 		CreateWindow(title, width, height, flags, in smallIcon, in bigIcon),
 		privateConstructorDispatcher: default
