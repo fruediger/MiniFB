@@ -11,6 +11,8 @@ namespace MiniFB;
 /// <summary>Provides a set of <see langword="static"/> members and extension methods in regard to using <see cref="N:MiniFB"/></summary>
 public static partial class MiniFB
 {
+	#region Library loading
+
 	internal sealed class Library : INativeImportLibrary
 	{
 		private const string libminifb = nameof(libminifb);
@@ -63,8 +65,9 @@ public static partial class MiniFB
 		}
 	}
 
-	[StructLayout(LayoutKind.Sequential)]
-	private readonly struct BuildVersion { public readonly byte Major, Minor, Patch; private readonly byte _Reserved; }
+	#endregion
+
+	#region Native API
 
 	[NativeImportSymbol<MiniFB.Library>(Kind = NativeImportSymbolKind.Reference)]
 	private static partial ref readonly BuildVersion mfb_build_version();
@@ -84,11 +87,28 @@ public static partial class MiniFB
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl), typeof(CallConvSuppressGCTransition)])]
 	private static unsafe partial byte* mfb_get_key_name(Key key);
 
+	#endregion
+
+	#region Helpers	
+
+	[StructLayout(LayoutKind.Sequential)]
+	private readonly struct BuildVersion { public readonly byte Major, Minor, Patch; private readonly byte _Reserved; }
+
+	#endregion
+
+	#region Private implementation
+
 	private static SpinLock mVariantLock; // no need to initialize since SpinLock is a value type anyways (though, the only real difference is that this enables thread owner tracking)
 	private static volatile string? mVariant;
 
 	private static SpinLock mVersionLock; // no need to initialize since SpinLock is a value type anyways (though, the only real difference is that this enables thread owner tracking)
 	private static volatile Version? mVersion;
+
+	#endregion
+
+	#region Public API and implementation
+
+	#region Properties
 
 	/// <summary>Gets or sets the target frames per second (fps) for the application</summary>
 	/// <value>The application-wide target frames per second (fps)</value>
@@ -183,6 +203,10 @@ public static partial class MiniFB
 		}
 	}
 
+	#endregion
+
+	#region (Extension-) Methods
+
 	/// <summary>Gets a commonly known name for a <see cref="Key"/></summary>
 	/// <param name="key">The <see cref="Key"/> whose commonly known name shouldk be obtained</param>
 	/// <returns>A commonly known name for the given <paramref name="key"/></returns>
@@ -194,4 +218,8 @@ public static partial class MiniFB
 			return Encoding.UTF8.GetString(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(mfb_get_key_name(key)));
 		}
 	}
+
+	#endregion
+
+	#endregion
 }

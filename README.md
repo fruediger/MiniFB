@@ -1,6 +1,18 @@
 ﻿# MiniFB
 
-TODO: ...
+MiniFB is a library for visualizing self-drawn frame buffers for .Net applications.
+
+MiniFB is available on [![NuGet](https://img.shields.io/nuget/vpre/MiniFB?logo=nuget&label=NuGet)](https://www.nuget.org/packages/MiniFB/)
+ and [![GitHub Release](https://img.shields.io/github/v/release/fruediger/MiniFB?include_prereleases&display_name=tag&logo=github&label=GitHub)](https://github.com/fruediger/MiniFB)!
+
+The library itself provides managed wrappings around a [custom version](https://github.com/fruediger/minifb-native) of the [native original minifb library](https://github.com/emoon/minifb).
+___
+
+You can draw the contents of your frame buffer yourself - with every method C# (or other .Net languages) and the .Net ecosystem offer you.
+Then you can display your frame buffer in a window - in an easy and platform-independent way.
+
+MiniFB also offers you a platform-independent way for most common scenarios when using desktop windows - like, for example, handling window events.
+___
 
 ## Requirements
 

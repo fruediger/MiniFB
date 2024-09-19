@@ -24,7 +24,7 @@ var silent = Argument("silent", false);
 // Known sample projects //
 ///////////////////////////
 
-ImmutableSortedSet<string> samples = [ "Noise", "Timer", "InputEvents", "MultipleWindows", "HiDpi", "Fullscreen", "FpsInTitle" ];
+ImmutableSortedSet<string> samples = [ "Noise", "Timer", "InputEvents", "MultipleWindows", "HiDpi", "Fullscreen", "FancyTitle" ];
 
 ///////////
 // Tasks //

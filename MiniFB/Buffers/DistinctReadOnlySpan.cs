@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace MiniFB.Buffers;
 
@@ -9,8 +10,11 @@ namespace MiniFB.Buffers;
 /// <typeparam name="TValue">The type of the items in the collection</typeparam>
 /// <param name="reference">A reference to the item which represents the sequential start of the collection</param>
 /// <param name="length">The length of the collection</param>
-/// <exception cref="ArgumentOutOfRangeException"><paramref name="reference"/> is a <see langword="null"/> reference or <paramref name="length"/> is negative</exception>
-public readonly ref struct DistincReadOnlySpan<TKey, TValue>(ref readonly TValue reference, nint length)
+/// <exception cref="ArgumentNullException"><paramref name="reference"/> is a <see langword="null"/> reference</exception>
+/// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative</exception>
+[StructLayout(LayoutKind.Sequential)]
+[method: MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+public readonly ref struct DistinctReadOnlySpan<TKey, TValue>(ref readonly TValue reference, nint length)
 	where TKey : unmanaged, Enum
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -24,7 +28,7 @@ public readonly ref struct DistincReadOnlySpan<TKey, TValue>(ref readonly TValue
 		return ref reference;
 
 		[DoesNotReturn]
-		static void failReferenceArgumentNull() => throw new ArgumentOutOfRangeException(nameof(reference), message: $"'{nameof(reference)}' must be not a null reference");
+		static void failReferenceArgumentNull() => throw new ArgumentNullException(nameof(reference), message: $"'{nameof(reference)}' must be not a null reference");
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -42,7 +46,6 @@ public readonly ref struct DistincReadOnlySpan<TKey, TValue>(ref readonly TValue
 	}
 
 	private readonly ref readonly TValue mReference = ref ValidateReference(in reference);
-
 	private readonly nint mLength = ValidateLength(length);
 
 	/// <summary>Gets the length (number of items) in the collection</summary>

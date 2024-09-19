@@ -2,6 +2,7 @@
 using MiniFB.Internal;
 using MiniFB.SourceGeneration;
 using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -15,15 +16,21 @@ namespace MiniFB;
 /// <summary>A window to which a pixel buffer can be rendered onto and on which certain input events can be handled</summary>
 public partial class Window : NativeObject
 {
-	// these values were pulled from the MiniFB source
-	// (https://github.com/fruediger/minifb-native/blob/master/src/WindowData.h#L42 and https://github.com/fruediger/minifb-native/blob/master/src/WindowData.h#L43)
-	private const int MouseButtonBufferSize = 8, KeyBufferSize = 512;
+	#region Native API
 
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial IntPtr mfb_open(IntPtr title, uint width, uint height);
 
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial IntPtr mfb_open_ex(IntPtr title, uint width, uint height, WindowFlags flags);
+	
+#pragma warning disable CS8500 // See the comment on a similar suppression in one of the 'CreateWindow' methods to find out why this is okay
+	[NativeImportFunction<MiniFB.Library, IsWindows>(CallConvs = [typeof(CallConvCdecl)])]
+	private static unsafe partial IntPtr mfb_open_with_icons(IntPtr title, uint width, uint height, IconInfo* icon_small, IconInfo* icon_big);
+
+	[NativeImportFunction<MiniFB.Library, IsWindows>(CallConvs = [typeof(CallConvCdecl)])]
+	private static unsafe partial IntPtr mfb_open_ex_with_icons(IntPtr title, uint width, uint height, WindowFlags flags, IconInfo* icon_small, IconInfo* icon_big);
+#pragma warning restore CS8500
 
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial UpdateState mfb_update(IntPtr window, ref readonly Argb buffer);
@@ -116,6 +123,10 @@ public partial class Window : NativeObject
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial bool mfb_wait_sync(IntPtr window);
 
+	#endregion
+
+	#region Callback wrappers implementation
+
 	[UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
 	private static void ActiveCallback(nint window, byte isActive)
 	{
@@ -207,6 +218,14 @@ public partial class Window : NativeObject
 			target.OnMouseScroll(modifier, deltaX, deltaY);
 		}
 	}
+
+	#endregion
+
+	#region Helpers
+
+	// these values were pulled from the MiniFB source
+	// (https://github.com/fruediger/minifb-native/blob/master/src/WindowData.h#L42 and https://github.com/fruediger/minifb-native/blob/master/src/WindowData.h#L43)
+	private const int MouseButtonBufferSize = 8, KeyBufferSize = 512;
 		
 	private static volatile uint mNativeBufferUsers = 0;
 	private static unsafe byte* mNativeBufferPtr = null;
@@ -298,25 +317,36 @@ public partial class Window : NativeObject
 		static void failTitleArgumentNull() => throw new ArgumentNullException(nameof(title));
 	}
 
-	// This method only exists, so we can increment the native buffer user count as early as possible, even in a ctor call chain.
-	// This method should not be used outside of a constructor call chain
-	private static IntPtr IncrementUserCounterAndValidateConvertTitle(string title, out bool lockTaken)
-	{
-		Interlocked.Increment(ref mNativeBufferUsers);
-
-		return ValidateConvertTitle(title, out lockTaken);
-	}
-
-	private static void ReleaseTitleBuffer(IntPtr titleNativeBuffer, bool lockTaken)
+	private static void ReleaseTitleBuffer(IntPtr titleBuffer, bool lockTaken)
 	{
 		unsafe
 		{
-			ReleaseLockedNativeBuffer((byte*)titleNativeBuffer, lockTaken);
+			ReleaseLockedNativeBuffer((byte*)titleBuffer, lockTaken);
 		}
-	}	
+	}
+
+	private static ref readonly Argb ValidatePinIconBuffer(ReadOnlyMemory<Argb> iconBuffer, uint iconWidth, uint iconHeight, out MemoryHandle iconBufferPin, IntPtr titleNativeBuffer, bool lockTaken)
+	{
+		if (iconBuffer.Length < iconWidth * iconHeight)
+		{
+			ReleaseTitleBuffer(titleNativeBuffer, lockTaken);
+
+			failIconBufferArgumentToSmall();
+		}
+
+		iconBufferPin = iconBuffer.Pin();
+
+		unsafe
+		{
+			return ref Unsafe.AsRef<Argb>(iconBufferPin.Pointer);
+		}
+
+		[DoesNotReturn]
+		static void failIconBufferArgumentToSmall() => throw new ArgumentException($"The {nameof(iconBuffer.Length)} of the given {nameof(iconBuffer)} argument is to small for the given {nameof(iconWidth)} and {nameof(iconHeight)}", nameof(iconBuffer));
+	}
 
 	private static IntPtr ValidateInstantiation(IntPtr handle)
-	{
+	{		
 		if (handle is 0)
 		{
 			failCouldNotInstantiateNativeWindowObject();
@@ -327,6 +357,108 @@ public partial class Window : NativeObject
 		[DoesNotReturn]
 		static void failCouldNotInstantiateNativeWindowObject() => throw new NativeOperationException($"Could not instanciate a native {nameof(Window)} object");
 	}
+
+	private static IntPtr CreateWindow(string title, uint width, uint height)
+	{
+		Interlocked.Increment(ref mNativeBufferUsers);
+
+		var titleBuffer = ValidateConvertTitle(title, out var lockTaken);
+
+		try
+		{
+			return ValidateInstantiation(mfb_open(titleBuffer, width, height));
+		}
+		finally
+		{
+			ReleaseTitleBuffer(titleBuffer, lockTaken);
+		}
+	}
+
+	private static IntPtr CreateWindow(string title, uint width, uint height, WindowFlags flags)
+	{
+		Interlocked.Increment(ref mNativeBufferUsers);
+
+		var titleBuffer = ValidateConvertTitle(title, out var lockTaken);
+
+		try
+		{
+			return ValidateInstantiation(mfb_open_ex(titleBuffer, width, height, flags));
+		}
+		finally
+		{
+			ReleaseTitleBuffer(titleBuffer, lockTaken);
+		}
+	}
+
+	private static IntPtr CreateWindow(string title, uint width, uint height, in IconInfo smallIcon, in IconInfo bigIcon)
+	{
+		Interlocked.Increment(ref mNativeBufferUsers);
+
+		var titleBuffer = ValidateConvertTitle(title, out var lockTaken);
+
+		try
+		{
+			unsafe
+			{
+				// I know, I know...
+				// If you look at how 'GetPinnableReference' is implemented (https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/ReadOnlySpan.cs,275),
+				// you'll see that it doesn't do anything special (which is expected, when you think about how 'fixed' works).
+				// So converting the buffer reference to a Span and then fixing it doesn't do much, but it feels much safer, doesn't it?
+				// Also: fixing a null pointer is perfectly safe
+				fixed (Argb* pinnedSmallIconBuffer = MemoryMarshal.CreateReadOnlySpan(in smallIcon.Buffer, unchecked((int)(smallIcon.Width * smallIcon.Height))),
+					         pinnedBigIconBuffer   = MemoryMarshal.CreateReadOnlySpan(in bigIcon.Buffer, unchecked((int)(bigIcon.Width * bigIcon.Height))))
+				{
+					IconInfo smallIconCopy = new(pinnedSmallIconBuffer, smallIcon.Width, smallIcon.Height),
+						     bigIconCopy   = new(pinnedBigIconBuffer, bigIcon.Width, bigIcon.Height);
+
+#pragma warning disable CS8500 // Well, actually... IconInfo is perfectly blittable (and in that sense, as a struct it's unmanaged)
+					return ValidateInstantiation(mfb_open_with_icons(titleBuffer, width, height, &smallIconCopy, &bigIconCopy));
+#pragma warning restore CS8500
+				}
+			}
+		}
+		finally
+		{
+			ReleaseTitleBuffer(titleBuffer, lockTaken);
+		}
+	}
+
+	private static IntPtr CreateWindow(string title, uint width, uint height, WindowFlags flags, in IconInfo smallIcon, in IconInfo bigIcon)
+	{
+		Interlocked.Increment(ref mNativeBufferUsers);
+
+		var titleBuffer = ValidateConvertTitle(title, out var lockTaken);
+
+		try
+		{
+			unsafe
+			{
+				// I know, I know...
+				// If you look at how 'GetPinnableReference' is implemented (https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/ReadOnlySpan.cs,275),
+				// you'll see that it doesn't do anything special (which is expected, when you think about how 'fixed' works).
+				// So converting the buffer reference to a Span and then fixing it doesn't do much, but it feels much safer, doesn't it?
+				// Also: fixing a null pointer is perfectly safe
+				fixed (Argb* pinnedSmallIconBuffer = MemoryMarshal.CreateReadOnlySpan(in smallIcon.Buffer, unchecked((int)(smallIcon.Width * smallIcon.Height))),
+					         pinnedBigIconBuffer   = MemoryMarshal.CreateReadOnlySpan(in bigIcon.Buffer, unchecked((int)(bigIcon.Width * bigIcon.Height))))
+				{
+					IconInfo smallIconCopy = new(pinnedSmallIconBuffer, smallIcon.Width, smallIcon.Height),
+						     bigIconCopy   = new(pinnedBigIconBuffer, bigIcon.Width, bigIcon.Height);
+
+#pragma warning disable CS8500 // Well, actually... IconInfo is perfectly blittable (and in that sense, as a struct it's unmanaged)
+					return ValidateInstantiation(mfb_open_ex_with_icons(titleBuffer, width, height, flags, &smallIconCopy, &bigIconCopy));
+#pragma warning restore CS8500
+				}
+			}
+		}
+		finally
+		{
+			ReleaseTitleBuffer(titleBuffer, lockTaken);
+		}
+	}
+
+	#endregion
+
+	#region Private implementation
 
 	private WindowLifetimeState mLifetimeState = default;
 	private GCHandle mSelfHandle;
@@ -345,20 +477,13 @@ public partial class Window : NativeObject
 		}
 	}
 
-	/// <inheritdoc/>
-	/// <remarks>
-	/// The native object pointed to by <paramref name="handle"/> is assumed to be <see cref="Window"/> object.
-	/// Do not use this constructor, if the new <see cref="Window"/> instance should be handled by the managed side
-	/// (e.g. <see cref="LifetimeState">LifetimeState</see> wouldn't get updated appropriately),
-	/// instead call <see cref="Window(string, uint, uint)"/> or <see cref="Window(string, uint, uint, WindowFlags)"/> as base constructors
-	/// </remarks>
-	protected Window(IntPtr handle) : base(handle) { }
+	private interface IPrivateConstructorDispatcher;
 
-	private Window(IntPtr handle, IntPtr titleNativeBuffer, bool lockTaken) : this(handle)
+#pragma warning disable IDE0060
+	private Window(IntPtr handle, IPrivateConstructorDispatcher? privateConstructorDispatcher = default) : this(handle)
+#pragma warning restore IDE0060
 	{	
 		LifetimeState = WindowLifetimeState.Initializing;
-
-		ReleaseTitleBuffer(titleNativeBuffer, lockTaken);
 
 		mSelfHandle = GCHandle.Alloc(this, GCHandleType.Weak);
 
@@ -379,21 +504,32 @@ public partial class Window : NativeObject
 		LifetimeState = WindowLifetimeState.Ready;
 	}
 
+	#endregion
+
+	#region Public API and implementation
+
+	#region Constructors and Disposing
+
+	/// <inheritdoc/>
+	/// <remarks>
+	/// The native object pointed to by <paramref name="handle"/> is assumed to be <see cref="Window"/> object.
+	/// Do not use this constructor, if the new <see cref="Window"/> instance should be handled by the managed side
+	/// (e.g. <see cref="LifetimeState">LifetimeState</see> wouldn't get updated appropriately),
+	/// instead call <see cref="Window(string, uint, uint)"/> or <see cref="Window(string, uint, uint, WindowFlags)"/> as base constructors
+	/// </remarks>
+	protected Window(IntPtr handle) : base(handle) { }
+
 	/// <summary>
 	/// Creates a new <see cref="Window"/> with a <paramref name="title"/>, a <paramref name="width"/>, and a <paramref name="height"/>
 	/// </summary>
 	/// <param name="title">The title of the <see cref="Window"/></param>
-	/// <param name="width">
-	/// The initial width of the <see cref="Window"/>.
-	/// </param>
-	/// <param name="height">
-	/// The initial height of the <see cref="Window"/>.
-	/// </param>
+	/// <param name="width">The initial width of the <see cref="Window"/></param>
+	/// <param name="height">The initial height of the <see cref="Window"/></param>
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	public Window(string title, uint width, uint height) : this(
-		ValidateInstantiation(mfb_open((IncrementUserCounterAndValidateConvertTitle(title, out var lockTaken) is var titleNativeBuffer) switch { _ => titleNativeBuffer }, width, height)),
-		titleNativeBuffer, lockTaken
+		CreateWindow(title, width, height),
+		privateConstructorDispatcher: default
 	)
 	{ }
 
@@ -402,18 +538,64 @@ public partial class Window : NativeObject
 	/// and certain <paramref name="flags"/> to control its behavior
 	/// </summary>
 	/// <param name="title">The title of the <see cref="Window"/></param>
-	/// <param name="width">
-	/// The initial width of the <see cref="Window"/>.
-	/// </param>
-	/// <param name="height">
-	/// The initial height of the <see cref="Window"/>.
-	/// </param>
+	/// <param name="width">The initial width of the <see cref="Window"/></param>
+	/// <param name="height">The initial height of the <see cref="Window"/></param>
 	/// <param name="flags">A set of <see cref="WindowFlags">flags</see> that control the behavior of the <see cref="Window"/></param>
 	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
 	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
 	public Window(string title, uint width, uint height, WindowFlags flags) : this(
-		ValidateInstantiation(mfb_open_ex((IncrementUserCounterAndValidateConvertTitle(title, out var lockTaken) is var titleNativeBuffer) switch { _ => titleNativeBuffer }, width, height, flags)),
-		titleNativeBuffer, lockTaken
+		CreateWindow(title, width, height, flags),
+		privateConstructorDispatcher: default
+	)
+	{ }
+
+	/// <summary>
+	/// Creates a new <see cref="Window"/> with a <paramref name="title"/>, a <paramref name="width"/>, a <paramref name="height"/>,
+	/// and a small and big icon defined by the <paramref name="smallIcon"/> and <paramref name="bigIcon"/> parameters
+	/// </summary>
+	/// <param name="title">The title of the <see cref="Window"/></param>
+	/// <param name="width">The initial width of the <see cref="Window"/></param>
+	/// <param name="height">The initial height of the <see cref="Window"/></param>
+	/// <param name="smallIcon">
+	/// The small icon that should be used by the <see cref="Window"/>,
+	/// or <c><see langword="default"/></c> if you don't want to set a custom small icon for the <see cref="Window"/>
+	/// </param>
+	/// <param name="bigIcon">
+	/// The big icon that should be used by the <see cref="Window"/>,
+	/// or <c><see langword="default"/></c> if you don't want to set a custom big icon for the <see cref="Window"/>
+	/// </param>
+	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
+	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
+	[SupportedOSPlatform("windows")]
+	public Window(string title, uint width, uint height, in IconInfo smallIcon = default, in IconInfo bigIcon = default) : this(
+		CreateWindow(title, width, height, in smallIcon, in bigIcon),
+		privateConstructorDispatcher: default
+	)
+	{ }
+
+	/// <summary>
+	/// Creates a new <see cref="Window"/> with a <paramref name="title"/>, a <paramref name="width"/>, a <paramref name="height"/>,
+	/// certain <paramref name="flags"/> to control its behavior, and a small and big icon defined by the <paramref name="smallIcon"/>
+	/// and <paramref name="bigIcon"/> parameters
+	/// </summary>
+	/// <param name="title">The title of the <see cref="Window"/></param>
+	/// <param name="width">The initial width of the <see cref="Window"/></param>
+	/// <param name="height">The initial height of the <see cref="Window"/></param>
+	/// <param name="flags">A set of <see cref="WindowFlags">flags</see> that control the behavior of the <see cref="Window"/></param>
+	/// <param name="smallIcon">
+	/// The small icon that should be used by the <see cref="Window"/>,
+	/// or <c><see langword="default"/></c> if you don't want to set a custom small icon for the <see cref="Window"/>
+	/// </param>
+	/// <param name="bigIcon">
+	/// The big icon that should be used by the <see cref="Window"/>,
+	/// or <c><see langword="default"/></c> if you don't want to set a custom big icon for the <see cref="Window"/>
+	/// </param>
+	/// <exception cref="ArgumentNullException"><paramref name="title"/> is <see langword="null"/></exception>
+	/// <exception cref="NativeOperationException">A new <see cref="Window"/> could not be instantiated</exception>
+	[SupportedOSPlatform("windows")]
+	public Window(string title, uint width, uint height, WindowFlags flags, in IconInfo smallIcon = default, in IconInfo bigIcon = default) : this(
+		CreateWindow(title, width, height, flags, in smallIcon, in bigIcon),
+		privateConstructorDispatcher: default
 	)
 	{ }
 
@@ -485,6 +667,10 @@ public partial class Window : NativeObject
 		LifetimeState = WindowLifetimeState.Disposed;
 	}
 
+	#endregion
+
+	#region Properties
+
 	/// <summary>Gets the current height of this <see cref="Window"/></summary>
 	/// <value>The current height of this <see cref="Window"/></value>
 	public uint Height => mfb_get_window_height(Handle);
@@ -495,7 +681,7 @@ public partial class Window : NativeObject
 
 	/// <summary>Gets the sequential collection of the current <see cref="PressedState"/> of each <see cref="Key"/></summary>
 	/// <value>The sequential collection of the current <see cref="PressedState"/> of each <see cref="Key"/></value>
-	public DistincReadOnlySpan<Key, PressedState> KeyBuffer
+	public DistinctReadOnlySpan<Key, PressedState> KeyBuffer
 	{
 		get
 		{
@@ -554,7 +740,7 @@ public partial class Window : NativeObject
 
 	/// <summary>Gets the sequential collection of the current <see cref="PressedState"/> of each <see cref="MouseButton"/></summary>
 	/// <value>The sequential collection of the current <see cref="PressedState"/> of each <see cref="MouseButton"/></value>
-	public DistincReadOnlySpan<MouseButton, PressedState> MouseButtonBuffer
+	public DistinctReadOnlySpan<MouseButton, PressedState> MouseButtonBuffer
 	{
 		get
 		{
@@ -687,6 +873,10 @@ public partial class Window : NativeObject
 	/// <value>The current width of this <see cref="Window"/></value>
 	public uint Width => mfb_get_window_width(Handle);
 
+	#endregion
+
+	#region Events
+
 	/// <summary>An event that occurs when the <see cref="Window"/> changes its <see cref="IsActive"/> state</summary>
 	public event WindowActiveEventHandler? Active;
 
@@ -717,6 +907,10 @@ public partial class Window : NativeObject
 
 	/// <summary>An event that occurs when the <see cref="Window"/> changes its size</summary>
 	public event WindowResizeEventHandler? Resize;
+
+	#endregion
+
+	#region Methods
 
 	/// <summary>Closes the <see cref="Window"/></summary>
 	/// <remarks>
@@ -803,13 +997,13 @@ public partial class Window : NativeObject
 	/// <param name="pixelBuffer">The sequential pixel buffer to which the contents of the <see cref="Window"/>'s frame buffer should get updated to</param>
 	/// <returns>An <see cref="UpdateState"/> indicating the result of the update</returns>
 	/// <remarks>
-	/// The <paramref name="pixelBuffer"/>'s <see cref="ReadOnlyMemory{T}.Length">length</see> must be at least
+	/// The <paramref name="pixelBuffer"/>'s <see cref="ReadOnlySpan{T}.Length">length</see> must be at least
 	/// <c>&lt;known frame buffer width&gt; * &lt;known frame buffer height&gt;</c> (those are the width and height values passed in during
-	/// <see cref="Window(string, uint, uint)">construction</see>, or later changed by the last call to <see cref="Update(ReadOnlyMemory{Argb}, uint, uint)">Update</see>).
+	/// <see cref="Window(string, uint, uint)">construction</see>, or later changed by the last call to <see cref="Update(ReadOnlySpan{Argb}, uint, uint)">Update</see>).
 	/// NOTE: The <paramref name="pixelBuffer"/> will get pinned during the duration of the update! (The <see cref="Window"/>'s <see cref="LifetimeState">LifetimeState</see>
 	/// will be set to <c><see cref="WindowLifetimeState.UpdatingWithFixedBuffer">UpdatingWithFixedBuffer</see></c> while updating.)
 	/// </remarks>
-	public UpdateState Update(ReadOnlyMemory<Argb> pixelBuffer)
+	public UpdateState Update(ReadOnlySpan<Argb> pixelBuffer)
 	{
 		if (Handle is 0)
 		{
@@ -827,9 +1021,9 @@ public partial class Window : NativeObject
 		unsafe
 		{
 			UpdateState result;
-			using (var pinnedBuffer = pixelBuffer.Pin())
+			fixed(Argb* pinnedPixelBuffer = pixelBuffer)
 			{
-				result = mfb_update(Handle, ref Unsafe.AsRef<Argb>(pinnedBuffer.Pointer));
+				result = mfb_update(Handle, ref Unsafe.AsRef<Argb>(pinnedPixelBuffer));
 			}
 
 			if (previousLifetimeState is WindowLifetimeState.Undefined)
@@ -849,20 +1043,16 @@ public partial class Window : NativeObject
 	/// Updates the <see cref="Window"/>'s frame buffer with the contents of the given <paramref name="pixelBuffer"/> of size <paramref name="width"/> × <paramref name="height"/>.
 	/// </summary>
 	/// <param name="pixelBuffer">The sequential pixel buffer to which the contents of the <see cref="Window"/>'s frame buffer should get updated to</param>
-	/// <param name="width">
-	/// The <paramref name="pixelBuffer"/>'s horizontal size.
-	/// </param>
-	/// <param name="height">
-	/// The <paramref name="pixelBuffer"/>'s vertical size.
-	/// </param>
+	/// <param name="width">The <paramref name="pixelBuffer"/>'s horizontal size</param>
+	/// <param name="height">The <paramref name="pixelBuffer"/>'s vertical size</param>
 	/// <returns>An <see cref="UpdateState"/> indicating the result of the update</returns>
 	/// <remarks>
-	/// The <paramref name="pixelBuffer"/>'s <see cref="ReadOnlyMemory{T}.Length">length</see> must be at least
+	/// The <paramref name="pixelBuffer"/>'s <see cref="ReadOnlySpan{T}.Length">length</see> must be at least
 	/// <c><paramref name="width"/> * <paramref name="height"/></c>.
 	/// NOTE: The <paramref name="pixelBuffer"/> will get pinned during the duration of the update! (The <see cref="Window"/>'s <see cref="LifetimeState">LifetimeState</see>
 	/// will be set to <c><see cref="WindowLifetimeState.UpdatingWithFixedBuffer">UpdatingWithFixedBuffer</see></c> while updating.)
 	/// </remarks>
-	public UpdateState Update(ReadOnlyMemory<Argb> pixelBuffer, uint width, uint height)
+	public UpdateState Update(ReadOnlySpan<Argb> pixelBuffer, uint width, uint height)
 	{
 		if (pixelBuffer.Length < width * height)
 		{
@@ -875,9 +1065,9 @@ public partial class Window : NativeObject
 		unsafe
 		{
 			UpdateState result;
-			using (var pinnedBuffer = pixelBuffer.Pin())
+			fixed (Argb* pinnedPixelBuffer = pixelBuffer)
 			{
-				result = mfb_update_ex(Handle, ref Unsafe.AsRef<Argb>(pinnedBuffer.Pointer), width, height);
+				result = mfb_update_ex(Handle, ref Unsafe.AsRef<Argb>(pinnedPixelBuffer), width, height);
 			}
 
 			if (previousLifetimeState is WindowLifetimeState.Undefined)
@@ -899,7 +1089,7 @@ public partial class Window : NativeObject
 	/// <remarks>
 	/// The <paramref name="pixelBuffer"/> must point to an accessible, readable and non-moving <see cref="Argb"/> memory
 	/// of at least <c>&lt;known frame buffer width&gt; * &lt;known frame buffer height&gt;</c> elements (those are the width and height values passed in during
-	/// <see cref="Window(string, uint, uint)">construction</see>, or later changed by the last call to <see cref="Update(ReadOnlyMemory{Argb}, uint, uint)">Update</see>).
+	/// <see cref="Window(string, uint, uint)">construction</see>, or later changed by the last call to <see cref="Update(ReadOnlySpan{Argb}, uint, uint)">Update</see>).
 	/// NOTE: No precending checks and operations are performed on the managed side before executing the update!
 	/// Therefore <paramref name="pixelBuffer"/> will NOT get additionally <see langword="fixed"/> during the duration of the update!
 	/// (The <see cref="Window"/>'s <see cref="LifetimeState">LifetimeState</see> will be set to <c><see cref="WindowLifetimeState.Updating">Updating</see></c> while updating.)
@@ -925,12 +1115,8 @@ public partial class Window : NativeObject
 
 	/// <summary>Updates the <see cref="Window"/>'s frame buffer with the contents of the given <paramref name="pixelBuffer"/> of size <paramref name="width"/> × <paramref name="height"/></summary>.
 	/// <param name="pixelBuffer">A pointer to a sequential <see cref="Argb"/> memory to which contents the <see cref="Window"/>'s frame buffer should get updated to</param>
-	/// <param name="width">
-	/// The <paramref name="pixelBuffer"/>'s horizontal size. 
-	/// </param>
-	/// <param name="height">
-	/// The <paramref name="pixelBuffer"/>'s vertical size. 
-	/// </param>
+	/// <param name="width">The <paramref name="pixelBuffer"/>'s horizontal size</param>
+	/// <param name="height">The <paramref name="pixelBuffer"/>'s vertical size</param>
 	/// <returns>An <see cref="UpdateState"/> indicating the result of the update</returns>
 	/// <remarks>
 	/// The <paramref name="pixelBuffer"/> must point to an accessible, readable and non-moving <see cref="Argb"/> memory
@@ -1006,4 +1192,8 @@ public partial class Window : NativeObject
 
 		return result;
 	}
+
+	#endregion
+
+	#endregion
 }

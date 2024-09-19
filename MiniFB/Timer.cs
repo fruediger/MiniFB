@@ -8,6 +8,8 @@ namespace MiniFB;
 /// <summary>A timer to keep track of passed time</summary>
 public partial class Timer : NativeObject
 {
+	#region Native API
+
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl)])]
 	private static partial IntPtr mfb_timer_create();
 
@@ -29,6 +31,10 @@ public partial class Timer : NativeObject
 	[NativeImportFunction<MiniFB.Library>(CallConvs = [typeof(CallConvCdecl), typeof(CallConvSuppressGCTransition)])]
 	private static partial double mfb_timer_get_resolution();
 
+	#endregion
+
+	#region Helpers
+
 	private static IntPtr ValidateInstantiation(IntPtr handle)
 	{
 		if (handle is 0)
@@ -42,15 +48,11 @@ public partial class Timer : NativeObject
 		static void failCouldNotInstantiateNativeTimerObject() => throw new NativeOperationException($"Could not instanciate a native {nameof(Timer)} object");
 	}
 
-	/// <summary>Get the global <see cref="Timer"/> frequency</summary>
-	/// <value>The global <see cref="Timer"/> frequency in ticks per second</value>
-	/// <remarks>This value is the reciprocal of <see cref="Resolution"/></remarks>
-	public static double Frequency => mfb_timer_get_frequency();
+	#endregion
 
-	/// <summary>Gets the global <see cref="Timer"/> resolution</summary>
-	/// <value>The global <see cref="Timer"/> resolution in seconds per tick</value>
-	/// <remarks>This value is the reciprocal of <see cref="Frequency"/></remarks>
-	public static double Resolution => mfb_timer_get_resolution();
+	#region Public API and implementation
+
+	#region Constructors and Disposing
 
 	/// <inheritdoc/>
 	/// <remarks>The native object pointed to by <paramref name="handle"/> is assumed to be <see cref="Timer"/> object</remarks>
@@ -68,6 +70,20 @@ public partial class Timer : NativeObject
 		base.Dispose(disposing);
 	}
 
+	#endregion
+
+	#region Properties
+
+	/// <summary>Get the global <see cref="Timer"/> frequency</summary>
+	/// <value>The global <see cref="Timer"/> frequency in ticks per second</value>
+	/// <remarks>This value is the reciprocal of <see cref="Resolution"/></remarks>
+	public static double Frequency => mfb_timer_get_frequency();
+
+	/// <summary>Gets the global <see cref="Timer"/> resolution</summary>
+	/// <value>The global <see cref="Timer"/> resolution in seconds per tick</value>
+	/// <remarks>This value is the reciprocal of <see cref="Frequency"/></remarks>
+	public static double Resolution => mfb_timer_get_resolution();
+
 	/// <summary>Gets the passed time between the last call to <see cref="Delta"/>, the last call to <see cref="Reset"/>, or the creation of this <see cref="Timer"/> (whichever was the last)</summary>
 	/// <value>The delta time in seconds on this <see cref="Timer"/></value>
 	/// <remarks>Obtaining this value resets the <see cref="Delta">delta time</see> on this <see cref="Timer"/></remarks>
@@ -77,6 +93,14 @@ public partial class Timer : NativeObject
 	/// <value>The current time in seconds on this <see cref="Timer"/></value>
 	public double Now => mfb_timer_now(Handle);
 
+	#endregion
+
+	#region Methods
+
 	/// <summary>Resets the <see cref="Now">current time</see> as well as the <see cref="Delta">delta time</see> on this <see cref="Timer"/> to <c>0</c></summary>
 	public void Reset() => mfb_timer_reset(Handle);
+
+	#endregion
+
+	#endregion
 }
